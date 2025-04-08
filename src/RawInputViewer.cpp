@@ -338,7 +338,7 @@ private:
     [[nodiscard]] std::optional<LRESULT> onInput(HWND, UINT, WPARAM wParam, LPARAM lParam)
     {
         UINT size = 0;
-        if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1))
+        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1))
         {
             THROW_LAST_SYSTEM_ERROR();
         }
@@ -346,7 +346,7 @@ private:
         TempBuffer<void> buffer(size);
         RAWINPUT* raw = static_cast<RAWINPUT*>(buffer.data());
 
-        if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, raw, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1))
+        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, raw, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1))
         {
             THROW_LAST_SYSTEM_ERROR();
         }
