@@ -1,0 +1,61 @@
+# Full manual is at https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+---
+BasedOnStyle: Microsoft
+
+IndentWidth: 4
+UseTab: Never
+
+ColumnLimit: 200
+
+SortIncludes: false
+
+IndentCaseLabels: true
+AccessModifierOffset: -4
+
+NamespaceIndentation: All
+
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+
+BreakConstructorInitializersBeforeComma: true
+BreakConstructorInitializers: BeforeColon
+
+BinPackParameters: false
+BinPackArguments: true
+
+# This applies to () [] <>
+AlignAfterOpenBracket: AlwaysBreak
+
+BreakBeforeBraces: Allman
+BraceWrapping:
+  AfterClass:      true
+  AfterControlStatement: true
+  AfterEnum:       true
+  AfterFunction:   true
+  AfterNamespace:  true
+  AfterObjCDeclaration: false
+  AfterStruct:     true
+  AfterUnion:      true
+  BeforeCatch:     true
+  BeforeElse:      true
+  IndentBraces:    false
+BreakBeforeBinaryOperators: None
+
+# Template declaration is on its own line
+BreakTemplateDeclarations: true
+
+# IMHO, the pointer declarator belongs with the type specifier
+PointerAlignment: Left
+
+SpaceAfterTemplateKeyword: false
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 1
+SpacesInAngles:  false
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
