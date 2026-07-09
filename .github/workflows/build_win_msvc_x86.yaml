@@ -6,23 +6,21 @@ on:
   pull_request:
     branches: [ "main", "develop" ]
 
-env:
-  CMAKE_GENERATOR: "Visual Studio 17 2022"
-
 jobs:
   build:
+    name: ${{ matrix.build }}
     runs-on: windows-latest
 
     strategy:
       fail-fast: false
       matrix:
-        config: [ Debug, Release ]
+        build: [ x86-debug, x86-release ]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate project files
-        run: cmake -B ${{github.workspace}}/build -A Win32 -DCMAKE_GENERATOR="${{env.CMAKE_GENERATOR}}" || exit 1
+      - name: Configure
+        run: cmake --preset msvc-x86
 
       - name: Build
-        run: cmake --build ${{github.workspace}}/build --config ${{matrix.config}}
+        run: cmake --build --preset ${{ matrix.build }}

@@ -9,40 +9,41 @@ A utility to test, visualize, and map WM_INPUT messages.
 
 # How to Build
 
-This project is written using **Visual Studio 2022** with **C++23** enabled and utilizes new C++ features like concepts and ranges.
+This project is written using **Visual Studio** with **C++23** enabled and utilizes new C++ features like concepts and ranges.
 
 ## What You Need
-- **Visual Studio 2022**: Ensure the `Desktop development with C++` workload is installed.
+- **Visual Studio 2022 or newer**: Ensure the `Desktop development with C++` workload is installed.
 
 ## Steps
 1. **Clone the code from GitHub**
    ```cmd
    git clone https://github.com/RealBitdancer/RawInputViewer.git && cd RawInputViewer
    ```
-2. **Create a build folder**
-   ```cmd
-   mkdir build && cd build
-   ```
-3. **Run CMake**
+2. **Configure with CMake**
 
-   Pick your flavor:
+   Pick your flavor. The Visual Studio generator is resolved from the host default, so any installed version works.
 
 * **64 Bit:**
    ```cmd
-   cmake .. -G "Visual Studio 17 2022" -A x64
+   cmake --preset default
    ```
 * **32 Bit:**
    ```cmd
-   cmake .. -G "Visual Studio 17 2022" -A Win32
+   cmake --preset msvc-x86
    ```
-4. **Open in Visual Studio**
+3. **Build**
+
+   Either build from the command line:
    ```cmd
-   start RawInputViewer.sln
+   cmake --build --preset debug
+   ```
+   Available build presets are `debug`, `release`, `x86-debug`, and `x86-release`.
+
+   Or open the generated solution in Visual Studio, pick `Debug` or `Release`, then hit `F5` or `Ctrl+F5`:
+   ```cmd
+   start build\msvc-x64\RawInputViewer.sln
    ```
    Note: Newer CMake/Visual Studio versions may generate `RawInputViewer.slnx` instead of `RawInputViewer.sln`.
-5. **Build and Run**
-
-   In Visual Studio, pick `Debug` or `Release`, then hit `F5` or `Ctrl+F5`.
 
 # Background
 During my work on a personal platform abstraction library (SAL), I ran repeatedly into issues with WM_INPUT. To quickly test input on different systems, I put together a quick and dirty C++ Windows desktop app that was really only meant for myself. While reading up on the topic of WM_INPUT, I realized that this tool might be useful for other folks who struggle with the quirks of WM_INPUT, so I sat down and polished it a little to avoid completely embarrassing myself. So, here we are, enjoy `RawInputViewer`.
