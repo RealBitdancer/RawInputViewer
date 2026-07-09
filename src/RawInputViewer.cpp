@@ -2,7 +2,7 @@
  *
  *   RawInputViewer - A utility to test, visualize, and map WM_INPUT messages.
  *
- *   Copyright (c) 2025 by Bitdancer (@RealBitdancer)
+ *   Copyright (c) 2025-2026 Bitdancer (github.com/RealBitdancer)
  *
  *   Licensed under the MIT License. See LICENSE file in the repository for details.
  *
@@ -12,6 +12,8 @@
 
 #include "RawInputViewer.hpp"
 #include "resource.h"
+#include <iterator>
+#include <limits>
 #include <map>
 
 BEGIN_ANONYMOUS_NAMESPACE
@@ -27,7 +29,6 @@ private:
             return false;
         }
 
-        // Handle Ctrl+{key} sequence
         if ((rawKbd.Flags & RI_KEY_E1) != 0)
         {
             pendingSequence_ = ScanCodeSequence::E1;
@@ -47,7 +48,12 @@ private:
         {
             // If we don't have a make code, try to get it from the VK.
             // Flags should still be set correctly, even though MakeCode == 0.
-            rawKbd.MakeCode = LOWORD(MapVirtualKey(rawKbd.VKey, MAPVK_VK_TO_VSC_EX));
+            const UINT scanCode = MapVirtualKey(rawKbd.VKey, MAPVK_VK_TO_VSC_EX);
+            rawKbd.MakeCode = LOBYTE(scanCode);
+            if (HIBYTE(LOWORD(scanCode)) == 0xE0)
+            {
+                rawKbd.adjustments |= AdjustmentFlags::ExtendedLookup;
+            }
             rawKbd.adjustments |= AdjustmentFlags::MakeCodeMapped;
         }
 
@@ -90,20 +96,14 @@ private:
             }
             case VK_CONTROL:
             {
-                if (isE0)
-                {
-                    rawKbd.VKey = VK_RCONTROL;
-                    rawKbd.adjustments |= AdjustmentFlags::VirtualKeyAdjusted;
-                }
+                rawKbd.VKey = isE0 ? VK_RCONTROL : VK_LCONTROL;
+                rawKbd.adjustments |= AdjustmentFlags::VirtualKeyAdjusted;
                 break;
             }
             case VK_MENU:
             {
-                if (isE0)
-                {
-                    rawKbd.VKey = VK_RMENU;
-                    rawKbd.adjustments |= AdjustmentFlags::VirtualKeyAdjusted;
-                }
+                rawKbd.VKey = isE0 ? VK_RMENU : VK_LMENU;
+                rawKbd.adjustments |= AdjustmentFlags::VirtualKeyAdjusted;
                 break;
             }
         }
@@ -160,27 +160,29 @@ private:
 
     auto lookupVirtualKey(const RawKeyboard& rawKbd) const noexcept
     {
-        const auto it = vkeyMapping_.find(rawKbd.VKey);
+        auto it = vkeyMapping_.find(rawKbd.VKey);
         if (it == std::end(vkeyMapping_))
         {
-            return vkeyMapping_.find(0xff);
+            it = vkeyMapping_.find(0xff);
+            _ASSERT(it != std::end(vkeyMapping_));
         }
         return it;
     }
 
     auto lookupKeyCode(const RawKeyboard& rawKbd) const noexcept
     {
-        const auto it = scanCodeMapping_.find(rawKbd.getLookupCode());
+        auto it = scanCodeMapping_.find(rawKbd.getLookupCode());
         if (it == std::end(scanCodeMapping_))
         {
-            return scanCodeMapping_.find(0x000);
+            it = scanCodeMapping_.find(0x000);
+            _ASSERT(it != std::end(scanCodeMapping_));
         }
         return it;
     }
 
     [[nodiscard]] std::optional<LRESULT> getListViewItemDisplayInfo(LVITEMW& item)
     {
-        if ((item.mask & LVIF_TEXT) == 0)
+        if ((item.mask & LVIF_TEXT) == 0 || item.pszText == nullptr || item.cchTextMax <= 0)
         {
             return std::nullopt;
         }
@@ -254,9 +256,9 @@ private:
             {
                 switch (const auto it = lookupKeyCode(rawKbd); listView_.getDisplayFormat(item.iSubItem))
                 {
-                    case ListView::DisplayFormat::Sml:
+                    case ListView::DisplayFormat::Sal:
                     {
-                        return formatTo(it->second.sml, item, ListView::DisplayFormat::Sml);
+                        return formatTo(it->second.sal, item, ListView::DisplayFormat::Sal);
                     }
                     case ListView::DisplayFormat::Ray:
                     {
@@ -298,7 +300,8 @@ private:
                 if ((rawKbd.adjustments & flags) != AdjustmentFlags{0})
                 {
                     // Draw adjusted values (VK or scan code) in bold to hint to the user what was adjusted.
-                    const int mask = (rawKbd.adjustments & AdjustmentFlags::VirtualKeyAdjusted) != AdjustmentFlags{0} ? 0b0110 : 0b1000;
+                    int mask = (rawKbd.adjustments & AdjustmentFlags::VirtualKeyAdjusted) != AdjustmentFlags{0} ? 0b0110 : 0;
+                    mask |= (rawKbd.adjustments & AdjustmentFlags::MakeCodeMapped) != AdjustmentFlags{0} ? 0b1000 : 0;
                     SelectObject(customDraw->nmcd.hdc, ((1 << customDraw->iSubItem) & mask) != 0 ? listView_.getBoldFont() : listView_.getFont());
                     customDraw->clrText = GetSysColor(COLOR_INFOTEXT);
                     customDraw->clrTextBk = GetSysColor(COLOR_INFOBK);
@@ -399,7 +402,17 @@ private:
             case ID_NOHOTKEYS:
             case ID_NOLEGACY:
             {
-                registerRawInputDevice();
+                if (!registerRawInputDevice())
+                {
+                    if (LOWORD(wParam) == ID_NOHOTKEYS)
+                    {
+                        statusBar_.setNoHotkeysChecked(!statusBar_.isNoHotkeysChecked());
+                    }
+                    else
+                    {
+                        statusBar_.setNoLegacyChecked(!statusBar_.isNoLegacyChecked());
+                    }
+                }
                 return 0;
             }
         }
@@ -633,7 +646,7 @@ private:
             Dec = IDC_POPUP_DEC,
             Hex = IDC_POPUP_HEX,
             Bin = IDC_POPUP_BIN,
-            Sml = IDC_POPUP_SML,
+            Sal = IDC_POPUP_SAL,
             Ray = IDC_POPUP_RAY,
             Glfw = IDC_POPUP_GLFW
         };
@@ -655,10 +668,10 @@ private:
             ListView_SetImageList(hwnd_, smallImageList_.handle(), LVSIL_SMALL);
             ListView_SetExtendedListViewStyle(hwnd_, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
 
-            StringResource columnDesks(hinstance, COLUMN_DESC_ID);
-            for (size_t position = 0; std::wstring_view columnDesk : splitAndTrimTrailing(columnDesks.view(), GROUP_SEP))
+            StringResource columnDescs(hinstance, COLUMN_DESC_ID);
+            for (size_t position = 0; std::wstring_view columnDesc : splitAndTrimTrailing(columnDescs.view(), GROUP_SEP))
             {
-                const auto [name, widthAndMoreView] = splitOnce(columnDesk, TOKEN_SEP);
+                const auto [name, widthAndMoreView] = splitOnce(columnDesc, TOKEN_SEP);
                 const auto [width, formatAndMoreView] = splitOnce(widthAndMoreView, TOKEN_SEP);
                 const auto [format, resIdAndMoreView] = splitOnce(formatAndMoreView, TOKEN_SEP);
                 const auto [resId, check] = splitOnce(resIdAndMoreView, TOKEN_SEP);
@@ -700,6 +713,10 @@ private:
             };
             // clang-format on
             position = ListView_InsertItem(hwnd_, &item);
+            if (position < 0)
+            {
+                return position;
+            }
 
             const int subItemCount = Header_GetItemCount(hwndHeader_);
             for (int i = 0; i < subItemCount; ++i)
@@ -818,7 +835,7 @@ private:
             Header_GetItemDropDownRect(hwndHeader_, column, &rcDropDown);
 
             POINT position{.x = rcDropDown.left, .y = rcItem.bottom};
-            ClientToScreen(hwnd_, &position);
+            ClientToScreen(hwndHeader_, &position);
 
             const UINT flags = TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN;
             switch (const int selectedMenuItem = splitButtonMenu.track(flags, position); selectedMenuItem)
@@ -826,7 +843,7 @@ private:
                 case IDC_POPUP_BIN:
                 case IDC_POPUP_DEC:
                 case IDC_POPUP_HEX:
-                case IDC_POPUP_SML:
+                case IDC_POPUP_SAL:
                 case IDC_POPUP_RAY:
                 case IDC_POPUP_GLFW:
                 {
@@ -1194,6 +1211,9 @@ private:
 
     bool registerRawInputDevice(DWORD flags) noexcept
     {
+        const bool remove = (flags & RIDEV_REMOVE) != 0;
+        const DWORD mouseFlags = remove ? RIDEV_REMOVE : 0;
+        const HWND target = remove ? nullptr : hwnd_;
         // clang-format off
         const RAWINPUTDEVICE rid[]
         {
@@ -1201,13 +1221,13 @@ private:
                 .usUsagePage = 0x01,
                 .usUsage = 0x06,     // Keyboard
                 .dwFlags = flags,
-                .hwndTarget = hwnd_
+                .hwndTarget = target
             },
             {
                 .usUsagePage = 0x01,
                 .usUsage = 0x02,     // Mouse
-                .dwFlags = 0,
-                .hwndTarget = hwnd_
+                .dwFlags = mouseFlags,
+                .hwndTarget = target
             }
         };
         // clang-format on
@@ -1217,7 +1237,7 @@ private:
     bool registerRawInputDevice() noexcept
     {
         DWORD flags = statusBar_.isNoHotkeysChecked() ? 0 : RIDEV_NOHOTKEYS;
-        flags |= statusBar_.isNoHotkeysChecked() ? 0 : RIDEV_NOLEGACY;
+        flags |= statusBar_.isNoLegacyChecked() ? 0 : RIDEV_NOLEGACY;
         return registerRawInputDevice(flags);
     }
 
@@ -1304,10 +1324,10 @@ public:
         for (std::string_view mappingView : splitAndTrimTrailing(scanCodeMapping, '\n'))
         {
             const auto [scanCodeView, codeAndMoreView] = splitOnce(mappingView, '=');
-            const auto [keyCodeView, smlAndMoreView] = splitOnce(codeAndMoreView, ',');
-            const auto [smlView, raylibAndMoreView] = splitOnce(smlAndMoreView, ',');
+            const auto [keyCodeView, salAndMoreView] = splitOnce(codeAndMoreView, ',');
+            const auto [salView, raylibAndMoreView] = splitOnce(salAndMoreView, ',');
             const auto [raylibView, glfwView] = splitOnce(raylibAndMoreView, ',');
-            scanCodeMapping_.emplace(toUShort(scanCodeView, 16), KeyCodes{toInt(keyCodeView, 10), smlView, raylibView, glfwView});
+            scanCodeMapping_.emplace(toUShort(scanCodeView, 16), KeyCodes{toInt(keyCodeView, 10), salView, raylibView, glfwView});
         }
 
         const std::string vkeyMapping = loadText(hinstance_, ID_VIRTUAL_KEY_MAPPING);

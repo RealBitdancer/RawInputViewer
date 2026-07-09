@@ -2,7 +2,7 @@
  *
  *   RawInputViewer - A utility to test, visualize, and map WM_INPUT messages.
  *
- *   Copyright (c) 2025 by Bitdancer (@RealBitdancer)
+ *   Copyright (c) 2025-2026 Bitdancer (github.com/RealBitdancer)
  *
  *   Licensed under the MIT License. See LICENSE file in the repository for details.
  *
@@ -25,9 +25,24 @@
 #include <commctrl.h>
 #include <strsafe.h>
 
+#include <algorithm>
+#include <cctype>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cwchar>
+#include <cwctype>
 #include <format>
+#include <memory>
 #include <optional>
 #include <ranges>
+#include <span>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 // clang-format off
@@ -40,8 +55,8 @@
 
 #ifdef _DEBUG
 
-#define FORMATED_FILE_AND_LINE __FILE__ "(" STRINGIZE(__LINE__) ")"
-#define SYSTEM_ERROR(e) std::system_error(std::error_code(e, std::system_category()), FORMATED_FILE_AND_LINE)
+#define FORMATTED_FILE_AND_LINE __FILE__ "(" STRINGIZE(__LINE__) ")"
+#define SYSTEM_ERROR(e) std::system_error(std::error_code(e, std::system_category()), FORMATTED_FILE_AND_LINE)
 
 #else // !_DEBUG
 
@@ -574,9 +589,9 @@ public:
         }
     }
 
-    void checkMenuItem(int index) const noexcept
+    void checkMenuItem(int commandId) const noexcept
     {
-        CheckMenuItem(subMenu_, index, MF_BYCOMMAND | MF_CHECKED);
+        CheckMenuItem(subMenu_, commandId, MF_BYCOMMAND | MF_CHECKED);
     }
 
     int track(UINT flags, const POINT& position) const noexcept
@@ -652,7 +667,11 @@ public:
             THROW_LAST_SYSTEM_ERROR();
         }
 
-        ImageList_Add(imageList_, bitmap.handle(), nullptr);
+        if (ImageList_Add(imageList_, bitmap.handle(), nullptr) < 0)
+        {
+            ImageList_Destroy(imageList_);
+            THROW_SYSTEM_ERROR(ERROR_INTERNAL_ERROR);
+        }
     }
 
     [[nodiscard]] HIMAGELIST handle() const noexcept
@@ -799,6 +818,7 @@ protected:
         const std::optional<LRESULT> result = self->dispatchMessage(hwnd, msg, wParam, lParam);
         if (msg == WM_NCDESTROY)
         {
+            RemoveWindowSubclass(hwnd, windowSubclassProc, idSubclass);
             self->hwnd_ = nullptr;
         }
         if (result)
@@ -898,7 +918,7 @@ union PackedRawKeyboard
     }
 };
 
-static_assert(sizeof(PackedRawKeyboard) == sizeof(LPARAM), "PackedRawKeyboard must be the size of a 32-bit lParam");
+static_assert(sizeof(PackedRawKeyboard) == sizeof(LPARAM), "PackedRawKeyboard must be the size of LPARAM");
 
 struct ListViewHeaderProperties
 {
@@ -934,16 +954,16 @@ enum class ScanCodeSequence
 
 struct KeyCodes
 {
-    KeyCodes(int keyCode, std::string_view sml, std::string_view ray, std::string_view glfw)
+    KeyCodes(int keyCode, std::string_view sal, std::string_view ray, std::string_view glfw)
         : keyCode{keyCode}
-        , sml{toWString(sml)}
+        , sal{toWString(sal)}
         , ray{toWString(ray)}
         , glfw{toWString(glfw)}
     {
     }
 
     const int keyCode;
-    const std::wstring sml;
+    const std::wstring sal;
     const std::wstring ray;
     const std::wstring glfw;
 };

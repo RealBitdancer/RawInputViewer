@@ -4,7 +4,8 @@
 
 A utility to test, visualize, and map WM_INPUT messages.
 
-[![Build](https://github.com/RealBitdancer/RawInputViewer/actions/workflows/build_win_msvc.yaml/badge.svg)](https://github.com/RealBitdancer/RawInputViewer/actions/workflows/build_win_msvc.yaml)
+[![Build x86](https://github.com/RealBitdancer/RawInputViewer/actions/workflows/build_win_msvc_x86.yaml/badge.svg)](https://github.com/RealBitdancer/RawInputViewer/actions/workflows/build_win_msvc_x86.yaml)
+[![Build x64](https://github.com/RealBitdancer/RawInputViewer/actions/workflows/build_win_msvc_x64.yaml/badge.svg)](https://github.com/RealBitdancer/RawInputViewer/actions/workflows/build_win_msvc_x64.yaml)
 
 # How to Build
 
@@ -38,12 +39,13 @@ This project is written using **Visual Studio 2022** with **C++23** enabled and 
    ```cmd
    start RawInputViewer.sln
    ```
+   Note: Newer CMake/Visual Studio versions may generate `RawInputViewer.slnx` instead of `RawInputViewer.sln`.
 5. **Build and Run**
 
    In Visual Studio, pick `Debug` or `Release`, then hit `F5` or `Ctrl+F5`.
 
 # Background
-During my work on a personal graphics library (SML), I ran repeatedly into issues with WM_INPUT. To quickly test input on different systems, I put together a quick and dirty C++ Windows desktop app that was really only meant for myself. While reading up on the topic of WM_INPUT, I realized that this tool might be useful for other folks who struggle with the quirks of WM_INPUT, so I sat down and polished it a little to avoid completely embarrassing myself. So, here we are, enjoy `RawInputViewer`.
+During my work on a personal platform abstraction library (SAL), I ran repeatedly into issues with WM_INPUT. To quickly test input on different systems, I put together a quick and dirty C++ Windows desktop app that was really only meant for myself. While reading up on the topic of WM_INPUT, I realized that this tool might be useful for other folks who struggle with the quirks of WM_INPUT, so I sat down and polished it a little to avoid completely embarrassing myself. So, here we are, enjoy `RawInputViewer`.
 
 # Attribution
 

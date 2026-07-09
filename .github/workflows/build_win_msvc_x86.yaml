@@ -1,0 +1,28 @@
+name: Windows MSVC x86
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+env:
+  CMAKE_GENERATOR: "Visual Studio 17 2022"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [ Debug, Release ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate project files
+        run: cmake -B ${{github.workspace}}/build -A Win32 -DCMAKE_GENERATOR="${{env.CMAKE_GENERATOR}}" || exit 1
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config ${{matrix.config}}

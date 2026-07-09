@@ -29,7 +29,7 @@
 #define IDR_POPUP_MENU_FLAGS            1200
 #define IDC_POPUP_BIN                   1201
 #define IDR_POPUP_MENU_LIB              1300
-#define IDC_POPUP_SML                   1301
+#define IDC_POPUP_SAL                   1301
 #define IDC_POPUP_RAY                   1302
 #define IDC_POPUP_GLFW                  1303
 #define IDC_STATIC                      -1
