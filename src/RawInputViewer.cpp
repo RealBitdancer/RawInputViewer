@@ -12,6 +12,7 @@
 
 #include "RawInputViewer.hpp"
 #include "resource.h"
+#include <hidsdi.h>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -158,6 +159,126 @@ private:
         return windowPlacement;
     }
 
+    [[nodiscard]] static std::wstring queryHidProductString(const wchar_t* interfacePath) noexcept
+    {
+        const HANDLE handle = CreateFileW(interfacePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+        {
+            return {};
+        }
+
+        wchar_t product[128]{};
+        const BOOLEAN succeeded = HidD_GetProductString(handle, product, sizeof(product));
+        CloseHandle(handle);
+
+        if (!succeeded)
+        {
+            return {};
+        }
+
+        std::wstring_view view(product, wcsnlen(product, std::size(product)));
+        while (!view.empty() && isWhitespace(view.back()))
+        {
+            view.remove_suffix(1);
+        }
+
+        return std::wstring(view);
+    }
+
+    [[nodiscard]] static std::wstring shortenInterfacePath(std::wstring_view path) noexcept
+    {
+        if (path.starts_with(LR"(\\?\)"))
+        {
+            path.remove_prefix(4);
+        }
+
+        const size_t firstHash = path.find(L'#');
+        if (firstHash != std::wstring_view::npos)
+        {
+            const size_t secondHash = path.find(L'#', firstHash + 1);
+            if (secondHash != std::wstring_view::npos)
+            {
+                path = path.substr(0, secondHash);
+            }
+        }
+
+        std::wstring shortened(path);
+        std::ranges::replace(shortened, L'#', L'\\');
+        return shortened;
+    }
+
+    [[nodiscard]] static std::wstring queryDevicePath(HANDLE hDevice)
+    {
+        UINT size = 0;
+        if (GetRawInputDeviceInfoW(hDevice, RIDI_DEVICENAME, nullptr, &size) != 0 || size == 0)
+        {
+            return {};
+        }
+
+        TempBuffer<wchar_t, MAX_PATH> path(size + 1);
+        path.data()[size] = L'\0';
+        if (GetRawInputDeviceInfoW(hDevice, RIDI_DEVICENAME, path.data(), &size) == static_cast<UINT>(-1))
+        {
+            return {};
+        }
+
+        return std::wstring(path.data());
+    }
+
+    [[nodiscard]] std::wstring deviceNameForPath(const std::wstring& path) const
+    {
+        std::wstring product = queryHidProductString(path.c_str());
+        if (!product.empty())
+        {
+            return product;
+        }
+
+        std::wstring shortened = shortenInterfacePath(path);
+        return shortened.empty() ? unknownDeviceName_ : shortened;
+    }
+
+    uint32_t deviceIndexFor(HANDLE hDevice)
+    {
+        if (hDevice == nullptr)
+        {
+            return injectedDeviceIndex;
+        }
+
+        if (const auto it = deviceIndices_.find(hDevice); it != std::end(deviceIndices_))
+        {
+            return it->second;
+        }
+
+        const std::wstring path = queryDevicePath(hDevice);
+        if (path.empty())
+        {
+            return overflowDeviceIndex;
+        }
+
+        if (const auto it = devicePathIndices_.find(path); it != std::end(devicePathIndices_))
+        {
+            deviceIndices_.emplace(hDevice, it->second);
+            return it->second;
+        }
+
+        if (deviceNames_.size() >= overflowDeviceIndex)
+        {
+            return overflowDeviceIndex;
+        }
+
+        const uint32_t index = static_cast<uint32_t>(deviceNames_.size());
+        deviceNames_.push_back(deviceNameForPath(path));
+        devicePathIndices_.emplace(path, index);
+        deviceIndices_.emplace(hDevice, index);
+        return index;
+    }
+
+    [[nodiscard]] const std::wstring& deviceNameFor(const RawKeyboard& rawKbd) const noexcept
+    {
+        const uint32_t index = rawKbd.getDeviceIndex();
+        return index < deviceNames_.size() ? deviceNames_[index] : otherDeviceName_;
+    }
+
     auto lookupVirtualKey(const RawKeyboard& rawKbd) const noexcept
     {
         auto it = vkeyMapping_.find(rawKbd.VKey);
@@ -276,6 +397,10 @@ private:
                 const int keyCode = lookupKeyCode(rawKbd)->second.keyCode;
                 return formatTo(keyCode, item, listView_.getDisplayFormat(item.iSubItem), keyCode > 0 ? 1 : 2);
             }
+            case 7:
+            {
+                return formatTo(deviceNameFor(rawKbd).c_str(), item, listView_.getDisplayFormat(item.iSubItem));
+            }
         }
 
         return std::nullopt; // Let DefWindowProcW() deal with unhandled messages
@@ -359,6 +484,7 @@ private:
             case RIM_TYPEKEYBOARD:
             {
                 RawKeyboard rawKbd(raw->data.keyboard);
+                rawKbd.setDeviceIndex(deviceIndexFor(raw->header.hDevice));
 
                 if (!toolBar_.isAdjustmentChecked() || adjustKeyboardInput(rawKbd))
                 {
@@ -382,6 +508,27 @@ private:
         // satisfying this requirement. For RIM_INPUTSINK (1), return 0 as processed.
         const int inputCode = GET_RAWINPUT_CODE_WPARAM(wParam);
         return inputCode == RIM_INPUT ? std::nullopt : std::optional<LRESULT>(0);
+    }
+
+    [[nodiscard]] std::optional<LRESULT> onInputDeviceChange(HWND, UINT, WPARAM wParam, LPARAM lParam)
+    {
+        const HANDLE hDevice = reinterpret_cast<HANDLE>(lParam);
+
+        switch (wParam)
+        {
+            case GIDC_ARRIVAL:
+            {
+                deviceIndexFor(hDevice);
+                break;
+            }
+            case GIDC_REMOVAL:
+            {
+                deviceIndices_.erase(hDevice);
+                break;
+            }
+        }
+
+        return 0;
     }
 
     [[nodiscard]] std::optional<LRESULT> onSize(HWND, UINT, WPARAM, LPARAM)
@@ -510,6 +657,10 @@ private:
             case WM_INPUT:
             {
                 return onInput(hwnd, msg, wParam, lParam);
+            }
+            case WM_INPUT_DEVICE_CHANGE:
+            {
+                return onInputDeviceChange(hwnd, msg, wParam, lParam);
             }
             case WM_COMMAND:
             {
@@ -1236,7 +1387,8 @@ private:
 
     bool registerRawInputDevice() noexcept
     {
-        DWORD flags = statusBar_.isNoHotkeysChecked() ? 0 : RIDEV_NOHOTKEYS;
+        DWORD flags = RIDEV_DEVNOTIFY;
+        flags |= statusBar_.isNoHotkeysChecked() ? 0 : RIDEV_NOHOTKEYS;
         flags |= statusBar_.isNoLegacyChecked() ? 0 : RIDEV_NOLEGACY;
         return registerRawInputDevice(flags);
     }
@@ -1246,6 +1398,11 @@ private:
     StatusBar statusBar_;
     const HINSTANCE hinstance_;
     const std::wstring registryKeyPath_;
+    const std::wstring otherDeviceName_;
+    const std::wstring unknownDeviceName_;
+    std::vector<std::wstring> deviceNames_;
+    std::map<HANDLE, uint32_t> deviceIndices_;
+    std::map<std::wstring, uint32_t> devicePathIndices_;
     std::map<USHORT, KeyCodes> scanCodeMapping_;
     ScanCodeSequence pendingSequence_{ScanCodeSequence::None};
     std::map<USHORT, std::pair<std::wstring, std::wstring>> vkeyMapping_;
@@ -1260,6 +1417,9 @@ public:
         , statusBar_{hinstance}
         , hinstance_{hinstance}
         , registryKeyPath_{constructRegistryKeyPath(hinstance)}
+        , otherDeviceName_{StringResource<32>(hinstance, IDS_DEVICE_OTHER).view()}
+        , unknownDeviceName_{StringResource<32>(hinstance, IDS_DEVICE_UNKNOWN).view()}
+        , deviceNames_{std::wstring{StringResource<32>(hinstance, IDS_DEVICE_INJECTED).view()}}
     {
         INITCOMMONCONTROLSEX icex = {sizeof(INITCOMMONCONTROLSEX), ICC_LISTVIEW_CLASSES | ICC_BAR_CLASSES};
         if (!InitCommonControlsEx(&icex))

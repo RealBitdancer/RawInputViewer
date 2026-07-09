@@ -55,50 +55,10 @@ source_group("Resource Files"
         "src/res/ToolBar.bmp"
 )
 
-if(MSVC)
-    # rc.exe writes ${PROJECT_NAME}.aps to its working directory (not beside the .rc).
-    # Run RC from the per-config build dir while compiling the source-tree .rc.
-    set(_res_dir "${CMAKE_CURRENT_SOURCE_DIR}/src/res")
-    if(CMAKE_CONFIGURATION_TYPES)
-        set(_rc_workdir "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>")
-    else()
-        set(_rc_workdir "${CMAKE_CURRENT_BINARY_DIR}")
-    endif()
-    set(_rc_out "${_rc_workdir}/${PROJECT_NAME}.res")
-
-    add_custom_command(
-        OUTPUT "${_rc_out}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${_rc_workdir}"
-        COMMAND ${CMAKE_COMMAND} -E chdir "${_rc_workdir}"
-            ${CMAKE_RC_COMPILER} /nologo
-            "/I${_res_dir}"
-            /fo ${PROJECT_NAME}.res
-            "${_res_dir}/${PROJECT_NAME}.rc"
-        DEPENDS
-            "${_res_dir}/${PROJECT_NAME}.rc"
-            "${_res_dir}/resource.h"
-            "${_res_dir}/${PROJECT_NAME}.ico"
-            "${_res_dir}/ScanCodeMapping.txt"
-            "${_res_dir}/VirtualKeyMapping.txt"
-            "${_res_dir}/ListView.bmp"
-            "${_res_dir}/StatusToolBar.bmp"
-            "${_res_dir}/ToolBar.bmp"
-        COMMENT "Compiling Windows resources (${PROJECT_NAME}.aps -> build dir)"
-        VERBATIM
-    )
-    add_custom_target(${PROJECT_NAME}Res DEPENDS "${_rc_out}")
-    add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}Res)
-
-    # Visual Studio does not always pass a generated .res from target_sources to the
-    # linker; pass it explicitly (same as dropping ${PROJECT_NAME}.res on Linker inputs).
-    target_link_options(${PROJECT_NAME} PRIVATE "$<SHELL_PATH:${_rc_out}>")
-
-    set_source_files_properties("src/res/${PROJECT_NAME}.rc" PROPERTIES VS_SETTINGS "ExcludedFromBuild=true")
-else()
-    set_source_files_properties("src/res/${PROJECT_NAME}.rc" PROPERTIES LANGUAGE RC)
-endif()
+set_source_files_properties("src/res/${PROJECT_NAME}.rc" PROPERTIES LANGUAGE RC)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY VS_DPI_AWARE "PerMonitor")
+set_property(TARGET ${PROJECT_NAME} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE UNICODE _UNICODE)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
@@ -106,4 +66,4 @@ target_compile_options(${PROJECT_NAME} PRIVATE /W3)
 target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/WX>)
 
 target_include_directories(${PROJECT_NAME} PRIVATE src/res)
-target_link_libraries(${PROJECT_NAME} PRIVATE user32 comctl32 Version)
+target_link_libraries(${PROJECT_NAME} PRIVATE user32 comctl32 Version hid)

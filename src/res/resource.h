@@ -23,6 +23,9 @@
 #define IDS_TOOLTIP_NOHOTKEYS           1009
 #define ID_NOLEGACY                     1010
 #define IDS_TOOLTIP_NOLEGACY            1011
+#define IDS_DEVICE_INJECTED             1012
+#define IDS_DEVICE_OTHER                1013
+#define IDS_DEVICE_UNKNOWN              1014
 #define IDR_POPUP_MENU_DEC_OR_HEX       1100
 #define IDC_POPUP_DEC                   1101
 #define IDC_POPUP_HEX                   1102

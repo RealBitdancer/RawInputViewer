@@ -840,8 +840,13 @@ enum class AdjustmentFlags : uint32_t
 {
     MakeCodeMapped = 0b0000'0001,
     VirtualKeyAdjusted = 0b0000'0010,
+    DeviceIndexMask = 0b0111'1100,
     ExtendedLookup = 0b1000'0000
 };
+
+inline constexpr uint32_t deviceIndexShift = 2;
+inline constexpr uint32_t injectedDeviceIndex = 0;
+inline constexpr uint32_t overflowDeviceIndex = 31;
 
 constexpr bool enableBitmaskOperatorOr(AdjustmentFlags);
 constexpr AdjustmentFlags enableBitmaskOperatorOrAssign(AdjustmentFlags);
@@ -877,6 +882,19 @@ public:
     [[nodiscard]] USHORT getLookupCode() const noexcept
     {
         return static_cast<USHORT>(MakeCode | ((adjustments & AdjustmentFlags::ExtendedLookup) != AdjustmentFlags{0} ? 0x100 : 0));
+    }
+
+    void setDeviceIndex(uint32_t index) noexcept
+    {
+        const uint32_t clamped = index > overflowDeviceIndex ? overflowDeviceIndex : index;
+        const uint32_t mask = std::to_underlying(AdjustmentFlags::DeviceIndexMask);
+        const uint32_t bits = (std::to_underlying(adjustments) & ~mask) | ((clamped << deviceIndexShift) & mask);
+        adjustments = static_cast<AdjustmentFlags>(bits);
+    }
+
+    [[nodiscard]] uint32_t getDeviceIndex() const noexcept
+    {
+        return (std::to_underlying(adjustments) & std::to_underlying(AdjustmentFlags::DeviceIndexMask)) >> deviceIndexShift;
     }
 
     AdjustmentFlags adjustments;
