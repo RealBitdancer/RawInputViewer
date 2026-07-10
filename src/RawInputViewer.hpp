@@ -455,6 +455,95 @@ template<concepts::CharOrWChar CharType = char, concepts::CharOrWCharContiguousR
     return {text.substr(0, pos), text.substr(pos + 1)};
 }
 
+struct FileHandleTraits
+{
+    using Handle = HANDLE;
+
+    [[nodiscard]] static Handle invalid() noexcept
+    {
+        return INVALID_HANDLE_VALUE;
+    }
+
+    static void close(Handle handle) noexcept
+    {
+        CloseHandle(handle);
+    }
+};
+
+struct NullHandleTraits
+{
+    using Handle = HANDLE;
+
+    [[nodiscard]] static Handle invalid() noexcept
+    {
+        return nullptr;
+    }
+
+    static void close(Handle handle) noexcept
+    {
+        CloseHandle(handle);
+    }
+};
+
+template<typename Traits>
+class UniqueHandle final
+{
+public:
+    using Handle = typename Traits::Handle;
+
+    UniqueHandle() noexcept = default;
+
+    explicit UniqueHandle(Handle handle) noexcept
+        : handle_{handle}
+    {
+    }
+
+    UniqueHandle(const UniqueHandle&) = delete;
+    UniqueHandle& operator=(const UniqueHandle&) = delete;
+    UniqueHandle& operator=(UniqueHandle&&) = delete;
+
+    UniqueHandle(UniqueHandle&& other) noexcept
+        : handle_{other.handle_}
+    {
+        other.handle_ = Traits::invalid();
+    }
+
+    ~UniqueHandle()
+    {
+        close();
+    }
+
+    [[nodiscard]] Handle get() const noexcept
+    {
+        return handle_;
+    }
+
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return isValid();
+    }
+
+    [[nodiscard]] bool isValid() const noexcept
+    {
+        return handle_ != Traits::invalid();
+    }
+
+private:
+    void close() noexcept
+    {
+        if (isValid())
+        {
+            Traits::close(handle_);
+            handle_ = Traits::invalid();
+        }
+    }
+
+    Handle handle_{Traits::invalid()};
+};
+
+using UniqueFileHandle = UniqueHandle<FileHandleTraits>;
+using UniqueNullHandle = UniqueHandle<NullHandleTraits>;
+
 class CurrentUserRegKey
 {
 public:

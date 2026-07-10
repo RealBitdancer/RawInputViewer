@@ -161,17 +161,14 @@ private:
 
     [[nodiscard]] static std::wstring queryHidProductString(const wchar_t* interfacePath) noexcept
     {
-        const HANDLE handle = CreateFileW(interfacePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-        if (handle == INVALID_HANDLE_VALUE)
+        UniqueFileHandle handle(CreateFileW(interfacePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+        if (!handle)
         {
             return {};
         }
 
         wchar_t product[128]{};
-        const BOOLEAN succeeded = HidD_GetProductString(handle, product, sizeof(product));
-        CloseHandle(handle);
-
-        if (!succeeded)
+        if (!HidD_GetProductString(handle.get(), product, sizeof(product)))
         {
             return {};
         }
