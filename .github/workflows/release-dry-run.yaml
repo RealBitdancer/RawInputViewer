@@ -1,0 +1,67 @@
+# Windows only. Native MSVC Release builds on windows-latest (x64 and Win32 targets).
+name: Release dry run
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.artifact_name }}
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - configure_preset: default
+            build_preset: release
+            artifact_name: RawInputViewer-x64.exe
+            exe_path: build/msvc-x64/Release/RawInputViewer.exe
+          - configure_preset: msvc-x86
+            build_preset: x86-release
+            artifact_name: RawInputViewer-x86.exe
+            exe_path: build/msvc-x86/Release/RawInputViewer.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.configure_preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.build_preset }}
+
+      - name: Stage binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item -Path "${{ matrix.exe_path }}" -Destination "staging/${{ matrix.artifact_name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: staging/${{ matrix.artifact_name }}
+          if-no-files-found: error
+
+  summary:
+    name: Dry run summary
+    needs: build
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write summary
+        shell: pwsh
+        run: |
+          "Release dry run succeeded. No GitHub Release was created." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "Staged artifacts:" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Get-ChildItem -Path dist -Recurse -File | ForEach-Object {
+            "- ``$($_.Name)`` ($($_.Length) bytes)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "Download the artifacts from this workflow run to verify the binaries before tagging." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

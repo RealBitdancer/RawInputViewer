@@ -163,6 +163,7 @@ public:
     TempBuffer(const TempBuffer&) = delete;
     TempBuffer& operator=(const TempBuffer&) = delete;
 
+    [[gsl::suppress("type.6", justification : "static_ is scratch storage; never read before write")]]
     TempBuffer() noexcept = default;
 
     inline TempBuffer(size_t elements)
@@ -224,8 +225,8 @@ private:
 
     T* p_{reinterpret_cast<T*>(static_)};
     size_t elements_{};
-    std::unique_ptr<T[]> dynamic_;
-    [[maybe_unused]] alignas(alignment()) std::byte static_[NElements * sizeof(T)]; // Buffer contents is intentionally uninitialized
+    std::unique_ptr<T[]> dynamic_{};
+    [[maybe_unused]] alignas(alignment()) std::byte static_[NElements * sizeof(T)]; // intentionally uninitialized
 };
 
 // Specialization for T == void, just for convenience
@@ -976,7 +977,7 @@ public:
     void setDeviceIndex(uint32_t index) noexcept
     {
         const uint32_t clamped = index > overflowDeviceIndex ? overflowDeviceIndex : index;
-        const uint32_t mask = std::to_underlying(AdjustmentFlags::DeviceIndexMask);
+        constexpr uint32_t mask = std::to_underlying(AdjustmentFlags::DeviceIndexMask);
         const uint32_t bits = (std::to_underlying(adjustments) & ~mask) | ((clamped << deviceIndexShift) & mask);
         adjustments = static_cast<AdjustmentFlags>(bits);
     }

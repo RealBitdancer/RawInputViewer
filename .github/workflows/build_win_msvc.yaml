@@ -1,0 +1,35 @@
+# Windows only. Native MSVC builds on windows-latest (x64 and Win32 targets).
+name: Windows MSVC
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build:
+    name: ${{ matrix.build_preset }}
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - configure_preset: default
+            build_preset: debug
+          - configure_preset: default
+            build_preset: release
+          - configure_preset: msvc-x86
+            build_preset: x86-debug
+          - configure_preset: msvc-x86
+            build_preset: x86-release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.configure_preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.build_preset }}
