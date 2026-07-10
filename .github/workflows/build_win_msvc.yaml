@@ -26,7 +26,7 @@ jobs:
             build_preset: x86-release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         run: cmake --preset ${{ matrix.configure_preset }}

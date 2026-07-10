@@ -23,7 +23,7 @@ jobs:
             exe_path: build/msvc-x86/Release/RawInputViewer.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         run: cmake --preset ${{ matrix.configure_preset }}
@@ -37,7 +37,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path staging | Out-Null
           Copy-Item -Path "${{ matrix.exe_path }}" -Destination "staging/${{ matrix.artifact_name }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.artifact_name }}
           path: staging/${{ matrix.artifact_name }}
@@ -49,7 +49,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true
