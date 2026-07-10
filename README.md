@@ -10,7 +10,7 @@ A utility to test, visualize, and map WM_INPUT messages. Windows only.
 
 RawInputViewer listens for [`WM_INPUT`](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-input)
 keyboard messages and shows each event in a list view: virtual key, scan code, flags, SAL,
-Raylib, and GLFW key name mappings, and (since 1.1.0) which physical device sent the input.
+Raylib, and GLFW key name mappings, and which physical device sent the input.
 
 ## Download
 

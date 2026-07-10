@@ -2,20 +2,26 @@
 
 All notable changes to this project are documented here.
 
-## [1.1.0] - Unreleased
+## [1.1.0] - 2026-07-09
+
+Highlights: each keyboard event now shows which device sent it, and Windows binaries are
+published on GitHub Releases.
 
 ### Added
 
-- **Input Device** list view column showing which keyboard sent each event, resolved via HID
-  product string when available and a shortened device interface path otherwise
-- Hot plug tracking through `RIDEV_DEVNOTIFY` and `WM_INPUT_DEVICE_CHANGE`
+- **Input Device column** in the list view. Each keyboard event now shows which physical device
+  sent it. The name comes from the HID product string when available, otherwise from a shortened
+  device interface path. Injected input, unknown devices, and the overflow case use fixed labels.
+- Hot plug tracking when keyboards are connected or removed (`RIDEV_DEVNOTIFY`,
+  `WM_INPUT_DEVICE_CHANGE`)
+- Pre built Windows binaries on GitHub Releases (`RawInputViewer-x64.exe`, `RawInputViewer-x86.exe`)
+- README download instructions and control reference
+- This changelog, CONTRIBUTING.md, and SECURITY.md
 - `UniqueHandle` and `UniqueFileHandle` RAII wrappers for Win32 handles (trait based, in the
   spirit of WRL `HandleT`)
 - CMake presets for MSVC x64 and x86 (`CMakePresets.json`)
 - Single GitHub Actions Windows workflow (native MSVC, x64 and x86)
 - GitHub Release workflow (tag `v*` on `main`) and a manual release dry run workflow
-- README download instructions, control reference, and release notes
-- This changelog, CONTRIBUTING.md, and SECURITY.md
 
 ### Fixed
 
@@ -35,6 +41,8 @@ All notable changes to this project are documented here.
 
 - C style casts replaced with `static_cast` and `reinterpret_cast` where appropriate
 - Copyright line updated to 2025-2026 Bitdancer (github.com/RealBitdancer)
+- GitHub Actions upgraded to Node 24 compatible action versions (`checkout@v5`, `upload-artifact@v5`,
+  `download-artifact@v5`, `action-gh-release@v3`)
 
 ## [1.0.0] - 2025-04-07
 
