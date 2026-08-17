@@ -28,6 +28,8 @@ install does not lose window placement or column layout.
   last-error code.
 - `constructRegistryKeyPath` is no longer marked `noexcept`. Allocation failure no longer
   calls `std::terminate`.
+- 32-bit MSVC `/W4 /WX` no longer fails on `TempBuffer` alignment padding (`C4324`). The
+  aligned scratch storage is now the first member.
 
 ### Changed
 

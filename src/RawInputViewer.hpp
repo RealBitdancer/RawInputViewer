@@ -227,10 +227,10 @@ private:
         return std::max(alignof(std::max_align_t), alignof(T));
     }
 
+    alignas(alignment()) std::byte static_[NElements * sizeof(T)];
     T* p_{reinterpret_cast<T*>(static_)};
     size_t elements_{};
     std::unique_ptr<T[]> dynamic_{};
-    [[maybe_unused]] alignas(alignment()) std::byte static_[NElements * sizeof(T)]; // intentionally uninitialized
 };
 
 // Specialization for T == void, just for convenience
