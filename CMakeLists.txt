@@ -10,7 +10,7 @@
 #
 ####################################################################################################
 
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.23)
 
 project(RawInputViewer LANGUAGES CXX)
 
@@ -21,7 +21,7 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT $
 add_executable(${PROJECT_NAME} WIN32)
 
 target_sources(${PROJECT_NAME}
-    PUBLIC
+    PRIVATE
         "src/${PROJECT_NAME}.cpp"
 
         # Header files are here as workaround to ensure folder
@@ -62,8 +62,8 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE UNICODE _UNICODE)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
-target_compile_options(${PROJECT_NAME} PRIVATE /W3)
-target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/WX>)
+target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive-)
+target_compile_options(${PROJECT_NAME} PRIVATE /WX)
 
 target_include_directories(${PROJECT_NAME} PRIVATE src/res)
 target_link_libraries(${PROJECT_NAME} PRIVATE user32 comctl32 Version hid)

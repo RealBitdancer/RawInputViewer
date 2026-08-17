@@ -31,7 +31,7 @@ turned down.
 ## Building and testing
 
 The README covers building. You need **Visual Studio 2022 or newer** with the Desktop
-development with C++ workload, **CMake 3.20+**, and **C++23**.
+development with C++ workload, **CMake 3.23+**, and **C++23**.
 
 ```cmd
 cmake --preset default

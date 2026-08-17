@@ -140,7 +140,7 @@ constexpr auto operator&(const T lhs, const T rhs)
 }
 
 template<concepts::CharOrWChar CharType = char>
-[[nodiscard]] constexpr bool isWhitespace(CharType ch) noexcept
+[[nodiscard]] bool isWhitespace(CharType ch) noexcept
 {
     if constexpr (concepts::WChar<CharType>)
     {
@@ -188,8 +188,12 @@ public:
         }
     }
 
-    // For default constructed TempBuffers, data() will return a pointer to static_[]
-    [[nodiscard]] inline T* data() const noexcept
+    [[nodiscard]] inline T* data() noexcept
+    {
+        return p_;
+    }
+
+    [[nodiscard]] inline const T* data() const noexcept
     {
         return p_;
     }
@@ -244,9 +248,14 @@ public:
         buffer_.resize(bytes);
     }
 
-    [[nodiscard]] inline void* data() const noexcept
+    [[nodiscard]] inline void* data() noexcept
     {
         return static_cast<void*>(buffer_.data());
+    }
+
+    [[nodiscard]] inline const void* data() const noexcept
+    {
+        return static_cast<const void*>(buffer_.data());
     }
 
     [[nodiscard]] inline size_t size() const noexcept
@@ -295,7 +304,12 @@ public:
         *std::copy_n(buffer, length, buffer_.data()) = L'\0';
     }
 
-    [[nodiscard]] inline wchar_t* str() const noexcept
+    [[nodiscard]] inline wchar_t* str() noexcept
+    {
+        return buffer_.data();
+    }
+
+    [[nodiscard]] inline const wchar_t* str() const noexcept
     {
         return buffer_.data();
     }
@@ -421,7 +435,7 @@ template<concepts::CharOrWCharContiguousRange R>
 }
 
 template<concepts::CharOrWChar CharType = char, concepts::CharOrWCharContiguousRange R>
-constexpr auto splitAndTrimTrailing(R&& text, CharType separator) noexcept
+auto splitAndTrimTrailing(R&& text, CharType separator) noexcept
 {
     auto splitView = text | std::views::split(separator);
     return splitView |
@@ -568,53 +582,62 @@ public:
     }
 
     template<concepts::Standard T>
-    [[nodiscard]] T readBinaryValue(const wchar_t* valueName, const T& defaultVal) const noexcept
+    [[nodiscard]] std::optional<T> tryReadBinaryValue(const wchar_t* valueName) const noexcept
     {
         if (hkey_ == nullptr)
         {
-            return defaultVal;
+            return std::nullopt;
         }
 
         T val{};
-        DWORD type = REG_BINARY;
+        DWORD type = 0;
         DWORD size = static_cast<DWORD>(sizeof(val));
-        LSTATUS status = RegQueryValueExW(hkey_, valueName, nullptr, &type, reinterpret_cast<PBYTE>(&val), &size);
-        if (status != ERROR_SUCCESS || size != sizeof(val))
+        const LSTATUS status = RegQueryValueExW(hkey_, valueName, nullptr, &type, reinterpret_cast<PBYTE>(&val), &size);
+        if (status != ERROR_SUCCESS || type != REG_BINARY || size != sizeof(val))
         {
-            return defaultVal;
+            return std::nullopt;
         }
 
         return val;
     }
 
     template<concepts::Standard T>
-    [[nodiscard]] std::vector<T> readBinaryValue(const wchar_t* valueName, const std::vector<T>& defaultVal) const noexcept
+    [[nodiscard]] std::optional<std::vector<T>> tryReadBinaryValueVector(const wchar_t* valueName) const noexcept
     {
         if (hkey_ == nullptr)
         {
-            return defaultVal;
+            return std::nullopt;
         }
 
         DWORD size = 0;
-        DWORD type = REG_BINARY;
+        DWORD type = 0;
         LSTATUS status = RegQueryValueExW(hkey_, valueName, nullptr, &type, nullptr, &size);
-        if (status != ERROR_SUCCESS || size == 0 || size % sizeof(T) != 0)
+        if (status != ERROR_SUCCESS || type != REG_BINARY || size == 0 || size % sizeof(T) != 0)
         {
-            return defaultVal;
+            return std::nullopt;
         }
 
-        size_t elementCount = size / sizeof(T);
-        std::vector<T> val;
-        val.resize(elementCount);
-
-        // Read the actual data
+        std::vector<T> val(size / sizeof(T));
         status = RegQueryValueExW(hkey_, valueName, nullptr, &type, reinterpret_cast<PBYTE>(val.data()), &size);
-        if (status != ERROR_SUCCESS)
+        if (status != ERROR_SUCCESS || type != REG_BINARY || size == 0 || size % sizeof(T) != 0)
         {
-            return defaultVal;
+            return std::nullopt;
         }
 
+        val.resize(size / sizeof(T));
         return val;
+    }
+
+    template<concepts::Standard T>
+    [[nodiscard]] T readBinaryValue(const wchar_t* valueName, const T& defaultVal) const noexcept
+    {
+        return tryReadBinaryValue<T>(valueName).value_or(defaultVal);
+    }
+
+    template<concepts::Standard T>
+    [[nodiscard]] std::vector<T> readBinaryValue(const wchar_t* valueName, const std::vector<T>& defaultVal) const noexcept
+    {
+        return tryReadBinaryValueVector<T>(valueName).value_or(defaultVal);
     }
 
     template<concepts::Standard T>
@@ -671,11 +694,10 @@ public:
         }
 
         subMenu_ = GetSubMenu(hmenu_, 0);
-        const DWORD le = GetLastError();
         if (subMenu_ == nullptr)
         {
             DestroyMenu(hmenu_);
-            THROW_SYSTEM_ERROR(le);
+            THROW_SYSTEM_ERROR(ERROR_RESOURCE_NAME_NOT_FOUND);
         }
     }
 
@@ -1003,8 +1025,13 @@ union PackedRawKeyboard
     LPARAM lParam;
 
     explicit PackedRawKeyboard(const RawKeyboard& rawkbd) noexcept
-        : bits{.makeCode = rawkbd.MakeCode, .flags = rawkbd.Flags, .vKey = rawkbd.VKey, .adjustments = rawkbd.adjustments}
+        : lParam{0}
     {
+        bits = {
+            .makeCode = static_cast<uint32_t>(rawkbd.MakeCode) & 0xffu,
+            .flags = static_cast<uint32_t>(rawkbd.Flags) & 0xffu,
+            .vKey = static_cast<uint32_t>(rawkbd.VKey) & 0xffu,
+            .adjustments = static_cast<AdjustmentFlags>(std::to_underlying(rawkbd.adjustments) & 0xffu)};
     }
 
     explicit PackedRawKeyboard(LPARAM lParam) noexcept

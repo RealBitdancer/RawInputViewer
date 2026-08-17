@@ -114,6 +114,11 @@ private:
 
     void addKeyEventToListView(const RawKeyboard& rawKbd)
     {
+        if (listView_.getItemCount() >= maxListViewItems_)
+        {
+            listView_.deleteItem(0);
+        }
+
         if (const int item = listView_.insertItem(listView_.getItemCount(), rawKbd); item >= 0)
         {
             listView_.ensureVisible(item, false);
@@ -424,7 +429,12 @@ private:
                     // Draw adjusted values (VK or scan code) in bold to hint to the user what was adjusted.
                     int mask = (rawKbd.adjustments & AdjustmentFlags::VirtualKeyAdjusted) != AdjustmentFlags{0} ? 0b0110 : 0;
                     mask |= (rawKbd.adjustments & AdjustmentFlags::MakeCodeMapped) != AdjustmentFlags{0} ? 0b1000 : 0;
-                    SelectObject(customDraw->nmcd.hdc, ((1 << customDraw->iSubItem) & mask) != 0 ? listView_.getBoldFont() : listView_.getFont());
+                    const bool bold = ((1 << customDraw->iSubItem) & mask) != 0;
+                    HFONT font = (bold && listView_.getBoldFont() != nullptr) ? listView_.getBoldFont() : listView_.getFont();
+                    if (font != nullptr)
+                    {
+                        SelectObject(customDraw->nmcd.hdc, font);
+                    }
                     customDraw->clrText = GetSysColor(COLOR_INFOTEXT);
                     customDraw->clrTextBk = GetSysColor(COLOR_INFOBK);
                     return CDRF_NEWFONT;
@@ -454,18 +464,32 @@ private:
 
     [[nodiscard]] std::optional<LRESULT> onCreate(HWND, UINT, WPARAM, LPARAM)
     {
-        toolBar_.create(hinstance_, *this);
-        listView_.create<IDS_COLUMNS>(hinstance_, *this);
-        statusBar_.create(hinstance_, *this);
-        return 0;
+        try
+        {
+            toolBar_.create(hinstance_, *this);
+            listView_.create<IDS_COLUMNS>(hinstance_, *this);
+            statusBar_.create(hinstance_, *this);
+            return 0;
+        }
+        catch (const std::exception&)
+        {
+            return -1;
+        }
     }
 
     [[nodiscard]] std::optional<LRESULT> onInput(HWND, UINT, WPARAM wParam, LPARAM lParam)
     {
-        UINT size = 0;
-        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1))
+        const int inputCode = GET_RAWINPUT_CODE_WPARAM(wParam);
+        const auto finish = [inputCode]() -> std::optional<LRESULT>
         {
-            THROW_LAST_SYSTEM_ERROR();
+            return inputCode == RIM_INPUT ? std::nullopt : std::optional<LRESULT>(0);
+        };
+
+        UINT size = 0;
+        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1) ||
+            size == 0)
+        {
+            return finish();
         }
 
         TempBuffer<void> buffer(size);
@@ -473,7 +497,7 @@ private:
 
         if (GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam), RID_INPUT, raw, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1))
         {
-            THROW_LAST_SYSTEM_ERROR();
+            return finish();
         }
 
         switch (raw->header.dwType)
@@ -499,12 +523,23 @@ private:
             }
         }
 
-        // Per https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-input,
-        // if inputCode is RIM_INPUT (0), DefWindowProc() must be called for system cleanup.
-        // Returning std::nullopt causes windowSubclassProc() to call DefSubclassProc(),
-        // satisfying this requirement. For RIM_INPUTSINK (1), return 0 as processed.
-        const int inputCode = GET_RAWINPUT_CODE_WPARAM(wParam);
-        return inputCode == RIM_INPUT ? std::nullopt : std::optional<LRESULT>(0);
+        return finish();
+    }
+
+    [[nodiscard]] std::optional<LRESULT> onDpiChanged(HWND, UINT, WPARAM, LPARAM lParam)
+    {
+        const auto* rect = reinterpret_cast<const RECT*>(lParam);
+        SetWindowPos(
+            hwnd_,
+            nullptr,
+            rect->left,
+            rect->top,
+            rect->right - rect->left,
+            rect->bottom - rect->top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        listView_.recreateBoldFont();
+        adjustLayout();
+        return 0;
     }
 
     [[nodiscard]] std::optional<LRESULT> onInputDeviceChange(HWND, UINT, WPARAM wParam, LPARAM lParam)
@@ -675,6 +710,10 @@ private:
             {
                 return onDestroy(hwnd, msg, wParam, lParam);
             }
+            case WM_DPICHANGED:
+            {
+                return onDpiChanged(hwnd, msg, wParam, lParam);
+            }
         }
 
         return std::nullopt; // Let DefWindowProcW() deal with unhandled messages
@@ -765,7 +804,7 @@ private:
     private:
         ImageList imageList_;
 
-        [[nodiscard]] std::optional<LRESULT> dispatchMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) override
+        [[nodiscard]] std::optional<LRESULT> dispatchMessage(HWND, UINT msg, WPARAM wParam, LPARAM) override
         {
             switch (msg)
             {
@@ -808,7 +847,7 @@ private:
         void create(HINSTANCE hinstance, const Window& parent)
         {
             const SIZE clientSize = parent.getClientSize();
-            const DWORD style = WS_CHILD | WS_VISIBLE | LVS_REPORT;
+            const DWORD style = WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHAREIMAGELISTS;
             createEx(0, WC_LISTVIEWW, L"", style, 0, 0, clientSize.cx, clientSize.cy, parent.hwnd(), nullptr, hinstance, nullptr);
             setWindowSubclass(hwnd_, this);
             hwndHeader_ = ListView_GetHeader(hwnd_);
@@ -826,24 +865,7 @@ private:
                 insertColumn(position++, name, toUInt(width, 10), toInt(format, 10), toULong(resId, 10), toULong(check, 10));
             }
 
-            hfont_ = reinterpret_cast<HFONT>(sendMessage(WM_GETFONT, 0, 0));
-            if (hfont_ == nullptr)
-            {
-                THROW_LAST_SYSTEM_ERROR();
-            }
-
-            LOGFONTW lf{};
-            if (GetObjectW(hfont_, sizeof(lf), &lf) == 0)
-            {
-                THROW_SYSTEM_ERROR(ERROR_INTERNAL_ERROR);
-            }
-
-            lf.lfWeight = FW_BOLD;
-            hfontBold_ = CreateFontIndirectW(&lf);
-            if (hfontBold_ == nullptr)
-            {
-                THROW_SYSTEM_ERROR(ERROR_INTERNAL_ERROR);
-            }
+            recreateBoldFont();
         }
 
         int insertItem(int position, const RawKeyboard& rawKbd)
@@ -867,9 +889,9 @@ private:
             }
 
             const int subItemCount = Header_GetItemCount(hwndHeader_);
-            for (int i = 0; i < subItemCount; ++i)
+            for (int i = 1; i < subItemCount; ++i)
             {
-                ListView_SetItemText(hwnd_, position, i + 1, LPSTR_TEXTCALLBACKW);
+                ListView_SetItemText(hwnd_, position, i, LPSTR_TEXTCALLBACKW);
             }
 
             return position;
@@ -912,6 +934,12 @@ private:
         {
             _ASSERT(IsWindow(hwnd_));
             ListView_DeleteAllItems(hwnd_);
+        }
+
+        void deleteItem(int item) noexcept
+        {
+            _ASSERT(IsWindow(hwnd_));
+            ListView_DeleteItem(hwnd_, item);
         }
 
         [[nodiscard]] bool isHeader(HWND hwnd) const noexcept
@@ -970,34 +998,44 @@ private:
             return true;
         }
 
-        void showSplitButtonMenu(HINSTANCE hinstance, int column) noexcept
+        void showSplitButtonMenu(HINSTANCE hinstance, int column)
         {
             const auto [resourceId, checkedMenuItem] = getHeaderUserData(column);
-            PopupMenu splitButtonMenu(hinstance, hwnd_, resourceId);
-            splitButtonMenu.checkMenuItem(checkedMenuItem);
-
-            RECT rcItem{};
-            Header_GetItemRect(hwndHeader_, column, &rcItem);
-
-            RECT rcDropDown{};
-            Header_GetItemDropDownRect(hwndHeader_, column, &rcDropDown);
-
-            POINT position{.x = rcDropDown.left, .y = rcItem.bottom};
-            ClientToScreen(hwndHeader_, &position);
-
-            const UINT flags = TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN;
-            switch (const int selectedMenuItem = splitButtonMenu.track(flags, position); selectedMenuItem)
+            if (resourceId != 0)
             {
-                case IDC_POPUP_BIN:
-                case IDC_POPUP_DEC:
-                case IDC_POPUP_HEX:
-                case IDC_POPUP_SAL:
-                case IDC_POPUP_RAY:
-                case IDC_POPUP_GLFW:
+                try
                 {
-                    setHeaderUserData(column, resourceId, selectedMenuItem);
-                    RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
-                    break;
+                    PopupMenu splitButtonMenu(hinstance, hwnd_, resourceId);
+                    splitButtonMenu.checkMenuItem(checkedMenuItem);
+
+                    RECT rcItem{};
+                    Header_GetItemRect(hwndHeader_, column, &rcItem);
+
+                    RECT rcDropDown{};
+                    Header_GetItemDropDownRect(hwndHeader_, column, &rcDropDown);
+
+                    POINT position{.x = rcDropDown.left, .y = rcItem.bottom};
+                    ClientToScreen(hwndHeader_, &position);
+
+                    const UINT flags = TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN;
+                    switch (const int selectedMenuItem = splitButtonMenu.track(flags, position); selectedMenuItem)
+                    {
+                        case IDC_POPUP_BIN:
+                        case IDC_POPUP_DEC:
+                        case IDC_POPUP_HEX:
+                        case IDC_POPUP_SAL:
+                        case IDC_POPUP_RAY:
+                        case IDC_POPUP_GLFW:
+                        {
+                            setHeaderUserData(column, resourceId, selectedMenuItem);
+                            RedrawWindow(hwnd_, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+                            break;
+                        }
+                    }
+                }
+                catch (const std::exception&)
+                {
+                    // Swallow exception on purpose
                 }
             }
         }
@@ -1022,6 +1060,34 @@ private:
         [[nodiscard]] HFONT getBoldFont() const noexcept
         {
             return hfontBold_;
+        }
+
+        void recreateBoldFont() noexcept
+        {
+            hfont_ = reinterpret_cast<HFONT>(sendMessage(WM_GETFONT, 0, 0));
+            if (hfont_ == nullptr)
+            {
+                hfont_ = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+            }
+
+            LOGFONTW lf{};
+            if (hfont_ == nullptr || GetObjectW(hfont_, sizeof(lf), &lf) == 0)
+            {
+                return;
+            }
+
+            lf.lfWeight = FW_BOLD;
+            HFONT bold = CreateFontIndirectW(&lf);
+            if (bold == nullptr)
+            {
+                return;
+            }
+
+            if (hfontBold_ != nullptr)
+            {
+                DeleteObject(hfontBold_);
+            }
+            hfontBold_ = bold;
         }
 
     private:
@@ -1180,7 +1246,7 @@ private:
             ImageList imageList_;
         } toolBar_;
 
-        [[nodiscard]] std::optional<LRESULT> dispatchMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) override
+        [[nodiscard]] std::optional<LRESULT> dispatchMessage(HWND, UINT msg, WPARAM wParam, LPARAM lParam) override
         {
             switch (msg)
             {
@@ -1242,7 +1308,7 @@ private:
     // Constructs the registry key path for RawInputViewer. This function
     // can fail silently, in which case the returned string is empty
     // and all properties read or written will be ignored.
-    [[nodiscard]] static std::wstring constructRegistryKeyPath(HINSTANCE hinstance) noexcept
+    [[nodiscard]] static std::wstring constructRegistryKeyPath(HINSTANCE hinstance)
     {
         TempBuffer<wchar_t, MAX_PATH> path{MAX_PATH};
         while (true)
@@ -1403,6 +1469,7 @@ private:
     std::map<USHORT, KeyCodes> scanCodeMapping_;
     ScanCodeSequence pendingSequence_{ScanCodeSequence::None};
     std::map<USHORT, std::pair<std::wstring, std::wstring>> vkeyMapping_;
+    static constexpr int maxListViewItems_ = 10000;
     static constexpr wchar_t toolBarButtonStates_[] = L"ToolbarButtonStates";
     static constexpr wchar_t windowPlacementValueName_[] = L"WindowPlacement";
     static constexpr wchar_t headerPropertiesValueName_[] = L"HeaderProperties";
@@ -1461,20 +1528,20 @@ public:
         );
         // clang-format on
 
-        // Restore the last window position, size, list view column widths, and selected view type
         CurrentUserRegKey regKey = getAppRegKey(RegKeyDisposition::OpenReadOnly);
-        const auto windowPlacement = regKey.readBinaryValue<WINDOWPLACEMENT>(windowPlacementValueName_, getWindowPlacement());
-        if (SetWindowPlacement(hwnd_, &windowPlacement))
+        if (const auto windowPlacement = regKey.tryReadBinaryValue<WINDOWPLACEMENT>(windowPlacementValueName_))
         {
-            // Restore list view column width and view type
-            const auto headerProperties = regKey.readBinaryValue(headerPropertiesValueName_, listView_.getHeaderProperties());
-            listView_.setHeaderProperties(headerProperties);
-
-            ToolBarButtonStates states = ToolBarButtonStates::Adjustment;
-            states = regKey.readBinaryValue(toolBarButtonStates_, states);
-            toolBar_.setAdjustmentChecked((states & ToolBarButtonStates::Adjustment) != ToolBarButtonStates{0});
-            statusBar_.setNoHotkeysChecked((states & ToolBarButtonStates::NoHotkeys) != ToolBarButtonStates{0});
-            statusBar_.setNoLegacyChecked((states & ToolBarButtonStates::NoLegacy) != ToolBarButtonStates{0});
+            SetWindowPlacement(hwnd_, &*windowPlacement);
+        }
+        if (const auto headerProperties = regKey.tryReadBinaryValueVector<ListViewHeaderProperties>(headerPropertiesValueName_))
+        {
+            listView_.setHeaderProperties(*headerProperties);
+        }
+        if (const auto states = regKey.tryReadBinaryValue<ToolBarButtonStates>(toolBarButtonStates_))
+        {
+            toolBar_.setAdjustmentChecked((*states & ToolBarButtonStates::Adjustment) != ToolBarButtonStates{0});
+            statusBar_.setNoHotkeysChecked((*states & ToolBarButtonStates::NoHotkeys) != ToolBarButtonStates{0});
+            statusBar_.setNoLegacyChecked((*states & ToolBarButtonStates::NoLegacy) != ToolBarButtonStates{0});
         }
 
         const std::string scanCodeMapping = loadText(hinstance_, ID_SCANCODE_MAPPING);

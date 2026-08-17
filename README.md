@@ -27,7 +27,8 @@ release builds are not code signed. To compile your own copy, see [How to Build]
 ## Using the app
 
 Press keys on any connected keyboard. Each key down and key up appears as a new row. Values
-that **Adjust** mode changed are drawn in **bold**.
+that **Adjust** mode changed are drawn in **bold**. The list keeps the most recent 10,000
+rows and drops the oldest when that cap is reached.
 
 Clear the list with the **Clear** button on the main toolbar, or with a right click anywhere.
 The app registers for raw mouse input and treats a right button release as clear.
@@ -47,7 +48,7 @@ which matches ordinary Windows behavior.
 | Button | Type | Checked (default) | Unchecked |
 |--------|------|-------------------|-----------|
 | **No Hotkeys** | toggle | System hotkeys such as Alt+Tab behave normally. | `RIDEV_NOHOTKEYS` is set. Hotkey combinations reach this app as raw keyboard input instead of triggering the system action. |
-| **No Legacy** | toggle | Legacy `WM_KEY*` and `WM_MOUSE*` messages are still generated alongside raw input. | `RIDEV_NOLEGACY` is set. Legacy keyboard and mouse messages for the registered devices are suppressed. |
+| **No Legacy** | toggle | Legacy `WM_KEY*` and `WM_MOUSE*` messages are still generated alongside raw input. | `RIDEV_NOLEGACY` is set on the keyboard device only. Legacy `WM_KEY*` messages are suppressed. Mouse `WM_*` messages stay enabled so the toolbar and list can still be clicked. |
 
 If re-registration fails, the toggle returns to its previous state.
 
@@ -73,6 +74,7 @@ ranges.
 ### What you need
 
 - **Visual Studio 2022 or newer** with the `Desktop development with C++` workload installed.
+- **CMake 3.23 or newer** to configure with the documented presets.
 
 ### Steps
 

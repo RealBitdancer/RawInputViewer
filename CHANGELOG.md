@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented here.
 
+## [1.1.1] - 2026-08-17
+
+Highlights: first launch keeps the documented toolbar defaults, the event list no longer
+grows without bound, and several shutdown and settings bugs are closed.
+
+Settings stay under the existing `HKEY_CURRENT_USER` key for product version 1.1. A 1.1.0
+install does not lose window placement or column layout.
+
+### Fixed
+
+- First launch (and any launch with no saved toolbar value) no longer unchecks **No Hotkeys**
+  and **No Legacy**. Those toggles are restored only when a `ToolbarButtonStates` value
+  exists.
+- List-view image list is no longer destroyed twice on close. The control now uses
+  `LVS_SHAREIMAGELISTS`.
+- `GetRawInputData` failures no longer throw from the window procedure. Create-time
+  failures return `-1` from `WM_CREATE`. A missing header popup menu no longer terminates
+  the process.
+- `PackedRawKeyboard` now zeroes the full `LPARAM` before packing fields, so the unused
+  high half is defined on 64-bit builds.
+- `WM_GETFONT` returning NULL is treated as the system font, not a fatal error.
+- Registry settings are accepted only when the type is `REG_BINARY` and the size matches.
+- `GetSubMenu` failure reports `ERROR_RESOURCE_NAME_NOT_FOUND` instead of a leftover
+  last-error code.
+- `constructRegistryKeyPath` is no longer marked `noexcept`. Allocation failure no longer
+  calls `std::terminate`.
+
+### Changed
+
+- The event list keeps the most recent 10,000 rows and drops the oldest.
+- Unchecked **No Legacy** applies `RIDEV_NOLEGACY` to the keyboard only. Mouse `WM_*`
+  messages stay enabled so the toolbar and list remain clickable. The README now says so.
+- The application manifest declares Per-Monitor V2 DPI awareness. The main window handles
+  `WM_DPICHANGED`.
+- CMake minimum version is 3.23, matching `CMakePresets.json`. The executable sources are
+  `PRIVATE`. Compile uses `/W4 /permissive-` and `/WX` in Debug and Release.
+
 ## [1.1.0] - 2026-07-09
 
 Highlights: each keyboard event now shows which device sent it, and Windows binaries are
